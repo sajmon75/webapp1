@@ -1,0 +1,145 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model School {
+  id                  String       @id @default(cuid())
+  name                String
+  code                String       @unique
+  address             String?
+  enableStockTracking Boolean      @default(false)
+  orderCutoffTime     String       @default("09:30") // HH:MM
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  branches            Branch[]
+  classrooms          Classroom[]
+  users               User[]
+  products            Product[]
+}
+
+model Branch {
+  id         String      @id @default(cuid())
+  schoolId   String
+  school     School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name       String      // es: "Sede Centrale", "Succursale Via Dante"
+  address    String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  classrooms Classroom[]
+  users      User[]
+}
+
+model Classroom {
+  id           String            @id @default(cuid())
+  schoolId     String
+  school       School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  branchId     String
+  branch       Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  name         String            // es: "3A", "5B", "1C"
+  section      String?           // es: "Liceo Scientifico"
+  floor        String?           // es: "Piano 2, Aula 204"
+  academicYear String            @default("2025/2026")
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  users        User[]
+  dailyOrders  ClassDailyOrder[]
+}
+
+model User {
+  id              String            @id @default(cuid())
+  email           String            @unique
+  name            String
+  passwordHash    String?
+  role            String            @default("STUDENT") // STUDENT | CLASS_REP | CATERING | ADMIN
+  ssoProvider     String            @default("BUILTIN") // BUILTIN | GOOGLE | MICROSOFT
+  ssoId           String?
+  avatarUrl       String?
+
+  schoolId        String?
+  school          School?           @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  branchId        String?
+  branch          Branch?           @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  classroomId     String?
+  classroom       Classroom?        @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  orderItems      OrderItem[]
+  confirmedOrders ClassDailyOrder[] @relation("ConfirmedByRep")
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  icon      String    @default("Sandwich") // Nome icona Lucide o icona descrittiva
+  sortOrder Int       @default(0)
+  products  Product[]
+}
+
+model Product {
+  id            String      @id @default(cuid())
+  schoolId      String?     // se null è disponibile per tutte le scuole, altrimenti per la specifica scuola
+  school        School?     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  categoryId    String
+  category      Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  price         Float
+  imageUrl      String?
+  isAvailable   Boolean     @default(true)
+  stockQuantity Int?        // null se non tracciato o illimitato, intero se stock attivo
+  allergens     String?     // es: "Glutine, Lattosio"
+  isVegetarian  Boolean     @default(false)
+  isGlutenFree  Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  orderItems    OrderItem[]
+}
+
+model ClassDailyOrder {
+  id              String      @id @default(cuid())
+  classroomId     String
+  classroom       Classroom   @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  date            String      // YYYY-MM-DD
+  status          String      @default("DRAFT") // DRAFT | CONFIRMED_BY_REP | PREPARING | READY | DELIVERED | CANCELLED
+  confirmedAt     DateTime?
+  confirmedById   String?
+  confirmedBy     User?       @relation("ConfirmedByRep", fields: [confirmedById], references: [id], onDelete: SetNull)
+  totalAmount     Float       @default(0.0)
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items           OrderItem[]
+
+  @@unique([classroomId, date])
+}
+
+model OrderItem {
+  id             String          @id @default(cuid())
+  orderBatchId   String
+  orderBatch     ClassDailyOrder @relation(fields: [orderBatchId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity       Int             @default(1)
+  unitPrice      Float
+  customization  String?         // es: "Senza pomodoro", "Pane integrale"
+  isPaid         Boolean         @default(false) // spuntato dal responsabile quando riceve il contante
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
